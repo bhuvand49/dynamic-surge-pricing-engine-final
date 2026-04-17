@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Dynamic Surge Pricing Engine</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:Arial,sans-serif;
+  background:#0f172a;
+  color:#fff;
+}
+#map{height:100vh;width:100%}
+
+.panel,.legend{
+  position:absolute;
+  z-index:1000;
+  background:rgba(15,23,42,.88);
+  backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:16px;
+  box-shadow:0 8px 25px rgba(0,0,0,.35);
+}
+
+.panel{padding:16px}
+#title{
+  top:12px; left:50%;
+  transform:translateX(-50%);
+  font-size:28px; font-weight:700;
+}
+#info{top:90px;left:15px;width:280px}
+#controls{top:90px;right:15px;width:260px}
+
+.label{color:#94a3b8;font-size:14px;margin-top:8px}
+.value{font-size:22px;font-weight:700}
+
+button{
+  width:100%;padding:10px;margin-top:8px;border:none;
+  border-radius:10px;font-size:15px;font-weight:700;
+  cursor:pointer;color:white;
+}
+.blue{background:#3b82f6}
+.green{background:#22c55e}
+.orange{background:#f97316}
+.red{background:#ef4444}
+
+.legend{
+  bottom:20px;left:15px;
+  padding:12px;font-size:13px;
+}
+.dot{
+  display:inline-block;width:12px;height:12px;
+  border-radius:50%;margin-right:8px;
+}
+
+/* EMBED MODE */
+body.embed #title,
+body.embed #info,
+body.embed #controls,
+body.embed .legend{
+  display:none;
+}
+body.embed #map{
+  height:100vh;
+}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="panel" id="title">🚀 Dynamic Surge Pricing Engine</div>
+
+<div class="panel" id="info">
+  <h3 style="margin-top:0;">📍 Region Info</h3>
+  <div class="label">Area</div><div class="value" id="area">-</div>
+  <div class="label">Drivers</div><div class="value" id="drivers">-</div>
+  <div class="label">Riders</div><div class="value" id="riders">-</div>
+  <div class="label">Rule Surge</div><div class="value" id="rule">-</div>
+  <div class="label">ML Surge</div><div class="value" id="ml">-</div>
+  <div class="label">Final Surge</div><div class="value" id="final">-</div>
+</div>
+
+<div class="panel" id="controls">
+  <h3 style="margin-top:0;">⚙ Scenario Controls</h3>
+  <button class="blue" onclick="setScenario(1,null)">🌧 Rain ON</button>
+  <button class="green" onclick="setScenario(0,null)">☀ Rain OFF</button>
+  <button class="orange" onclick="setScenario(null,1)">🎉 Event ON</button>
+  <button class="red" onclick="setScenario(null,0)">😴 Event OFF</button>
+  <div style="margin-top:12px;color:#cbd5e1;" id="status">Rain: 0 | Event: 0</div>
+</div>
+
+<div class="legend">
+  <div><span class="dot" style="background:#00ff9c;"></span> Normal</div>
+  <div><span class="dot" style="background:#ffd000;"></span> Busy</div>
+  <div><span class="dot" style="background:#ff7a00;"></span> High</div>
+  <div><span class="dot" style="background:#ff0000;"></span> Extreme</div>
+</div>
+
+<script>
+const API = "http://127.0.0.1:8000";
+
+/* Detect embed mode:
+   1) ?embed=1
+   2) loaded inside iframe
+*/
+const params = new URLSearchParams(window.location.search);
+const EMBED = params.get("embed") === "1" || window.self !== window.top;
+
+if (EMBED) {
+  document.body.classList.add("embed");
+}
+
+const map = L.map("map").setView([12.9716,77.5946],11);
+
+L.tileLayer(
+  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  { attribution:"© OpenStreetMap" }
+).addTo(map);
+
+let surgeLayers = [];
+let driverMarkers = [];
+
+function surgeColor(s){
+  if(s >= 3) return "#ff0000";
+  if(s >= 2) return "#ff7a00";
+  if(s >= 1.5) return "#ffd000";
+  return "#00ff9c";
+}
+
+function clearLayers(){
+  surgeLayers.forEach(l => map.removeLayer(l));
+  surgeLayers = [];
+}
+
+function clearDrivers(){
+  driverMarkers.forEach(m => map.removeLayer(m));
+  driverMarkers = [];
+}
+
+async function loadSurge(){
+  try{
+    const res = await fetch(API + "/surge/all");
+    const data = await res.json();
+
+    clearLayers();
+
+    data.forEach(region => {
+      const color = surgeColor(region.surge_multiplier);
+
+      region.polygons.forEach(polyCoords => {
+        const polygon = L.polygon(polyCoords,{
+          color,
+          fillColor:color,
+          fillOpacity:0.45,
+          weight:1.2
+        }).addTo(map);
+
+        if (!EMBED) {
+          polygon.bindPopup(`
+            <b>${region.area}</b><br>
+            Drivers: ${region.drivers}<br>
+            Riders: ${region.riders}<br>
+            Final Surge: ${region.surge_multiplier}x
+          `);
+
+          polygon.on("click", () => {
+            document.getElementById("area").innerText = region.area;
+            document.getElementById("drivers").innerText = region.drivers;
+            document.getElementById("riders").innerText = region.riders;
+            document.getElementById("rule").innerText = region.rule_surge + "x";
+            document.getElementById("ml").innerText = region.ml_surge + "x";
+            document.getElementById("final").innerText = region.surge_multiplier + "x";
+          });
+        }
+
+        surgeLayers.push(polygon);
+      });
+    });
+  } catch(err){
+    console.error(err);
+  }
+}
+
+async function loadDrivers(){
+  try{
+    const res = await fetch(API + "/drivers");
+    const data = await res.json();
+
+    clearDrivers();
+
+    data.forEach(d => {
+      const marker = L.circleMarker([d.lat,d.lon],{
+        radius: EMBED ? 3 : 4,
+        color:"#3b82f6",
+        fillColor:"#3b82f6",
+        fillOpacity:0.95,
+        weight:1
+      }).addTo(map);
+
+      driverMarkers.push(marker);
+    });
+  } catch(err){
+    console.error(err);
+  }
+}
+
+async function setScenario(rain,event){
+  try{
+    const current = await fetch(API + "/scenario");
+    const state = await current.json();
+
+    const body = {
+      rain: rain === null ? state.rain : rain,
+      event: event === null ? state.event : event
+    };
+
+    await fetch(API + "/scenario",{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify(body)
+    });
+
+    const status = document.getElementById("status");
+    if (status) status.innerText = `Rain: ${body.rain} | Event: ${body.event}`;
+  } catch(err){
+    console.error(err);
+  }
+}
+
+loadSurge();
+loadDrivers();
+
+setInterval(loadSurge,5000);
+setInterval(loadDrivers,2000);
+</script>
+</body>
+</html>
