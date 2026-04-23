@@ -1,52 +1,37 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta charset="UTF-8">
 <title>Dynamic Surge Pricing Engine</title>
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <style>
-*{box-sizing:border-box}
-body{margin:0;background:#020617;color:#fff;font-family:Inter,Arial,sans-serif}
+body{margin:0;background:#020617;color:#fff;font-family:Arial}
 #map{height:100vh;width:100%}
-
-.panel,.legend{
+.panel{
 position:absolute;z-index:1000;
 background:rgba(15,23,42,.85);
-backdrop-filter:blur(10px);
-border:1px solid rgba(255,255,255,.08);
-border-radius:16px;
-box-shadow:0 8px 30px rgba(0,0,0,.35);
+padding:15px;border-radius:16px;
+box-shadow:0 8px 25px rgba(0,0,0,.35)
 }
-
-.panel{padding:14px}
-#title{top:12px;left:50%;transform:translateX(-50%);font-size:26px;font-weight:800}
-#info{top:82px;left:15px;width:270px}
-#controls{top:82px;right:15px;width:240px}
-.legend{bottom:15px;left:15px;padding:12px;font-size:13px}
-
+#title{top:12px;left:50%;transform:translateX(-50%);font-size:24px;font-weight:800}
+#info{top:92px;left:15px;width:260px}
+#controls{top:92px;right:15px;width:240px}
+.legend{bottom:15px;left:15px}
 button{
-width:100%;padding:10px;margin-top:8px;border:none;border-radius:10px;
-font-weight:700;color:#fff;cursor:pointer
+width:100%;padding:10px;margin-top:8px;
+border:none;border-radius:10px;
+font-weight:bold;color:#fff;cursor:pointer
 }
 .blue{background:#3b82f6}
 .green{background:#22c55e}
 .orange{background:#f97316}
 .red{background:#ef4444}
-
-.label{font-size:13px;color:#94a3b8;margin-top:7px}
-.value{font-size:20px;font-weight:700}
-.dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px}
-
-body.embed #title,
-body.embed #info,
-body.embed #controls,
-body.embed .legend{display:none}
 </style>
 </head>
+
 <body>
 
 <div id="map"></div>
@@ -54,164 +39,164 @@ body.embed .legend{display:none}
 <div class="panel" id="title">🚀 Dynamic Surge Pricing Engine</div>
 
 <div class="panel" id="info">
-<h3 style="margin:0 0 8px">📍 Region Info</h3>
-<div class="label">Area</div><div class="value" id="area">-</div>
-<div class="label">Drivers</div><div class="value" id="drivers">-</div>
-<div class="label">Riders</div><div class="value" id="riders">-</div>
-<div class="label">Final Surge</div><div class="value" id="final">-</div>
+<h3>📍 Region Info</h3>
+<div>Area: <span id="area">-</span></div>
+<div>Drivers: <span id="drivers">-</span></div>
+<div>Riders: <span id="riders">-</span></div>
+<div>Final Surge: <span id="final">-</span></div>
 </div>
 
 <div class="panel" id="controls">
-<h3 style="margin:0 0 8px">⚙ Controls</h3>
+<h3>⚙ Controls</h3>
 <button class="blue" onclick="setScenario(1,null)">🌧 Rain ON</button>
 <button class="green" onclick="setScenario(0,null)">☀ Rain OFF</button>
 <button class="orange" onclick="setScenario(null,1)">🎉 Event ON</button>
 <button class="red" onclick="setScenario(null,0)">😴 Event OFF</button>
-<div style="margin-top:10px;color:#cbd5e1" id="status">Loading...</div>
+<div id="status" style="margin-top:10px">Loading...</div>
 </div>
 
-<div class="legend">
-<div><span class="dot" style="background:#00ff9c"></span>Normal</div>
-<div><span class="dot" style="background:#ffd000"></span>Busy</div>
-<div><span class="dot" style="background:#ff7a00"></span>High</div>
-<div><span class="dot" style="background:#ff0000"></span>Extreme</div>
-<div><span class="dot" style="background:#3b82f6"></span>Drivers</div>
-<div><span class="dot" style="background:#ec4899"></span>Riders</div>
+<div class="panel legend">
+<div>🟢 Normal</div>
+<div>🟡 Busy</div>
+<div>🟠 High</div>
+<div>🔴 Extreme</div>
+<div>🔵 Drivers</div>
+<div>🟣 Riders</div>
 </div>
 
 <script>
 const API="https://dynamic-surge-api.onrender.com";
-const params=new URLSearchParams(window.location.search);
-const EMBED=params.get("embed")==="1"||window.self!==window.top;
-if(EMBED)document.body.classList.add("embed");
+const map=L.map("map").setView([12.9716,77.5946],11);
 
-const map=L.map("map",{zoomControl:!EMBED}).setView([12.9716,77.5946],11);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
 
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
-attribution:"© OpenStreetMap"
-}).addTo(map);
+let baseGrid=[],surgeGrid=[],driverMarkers=[],riderMarkers=[];
 
-let surgeLayers=[],driverMarkers=[],riderMarkers=[];
-
-function surgeColor(s){
+function color(s){
 if(s>=3)return"#ff0000";
 if(s>=2)return"#ff7a00";
 if(s>=1.4)return"#ffd000";
 return"#00ff9c";
 }
 
-function clearSet(arr){
+function clear(arr){
 arr.forEach(x=>map.removeLayer(x));
 arr.length=0;
 }
 
+async function loadGrid(){
+const res=await fetch(API+"/grid");
+const data=await res.json();
+
+clear(baseGrid);
+
+data.forEach(z=>{
+z.polygons.forEach(poly=>{
+baseGrid.push(
+L.polygon(poly,{
+color:"#334155",
+weight:1,
+fillOpacity:0
+}).addTo(map)
+);
+});
+});
+}
+
 async function loadSurge(){
-try{
 const res=await fetch(API+"/surge/all");
 const data=await res.json();
-clearSet(surgeLayers);
 
-data.forEach(region=>{
-const color=surgeColor(region.surge_multiplier);
+clear(surgeGrid);
 
-region.polygons.forEach(poly=>{
+data.forEach(z=>{
+z.polygons.forEach(poly=>{
 const layer=L.polygon(poly,{
-color,
-fillColor:color,
-fillOpacity:0.62,
+color:color(z.surge_multiplier),
+fillColor:color(z.surge_multiplier),
+fillOpacity:.55,
 weight:2
 }).addTo(map);
 
-if(!EMBED){
 layer.on("click",()=>{
-area.innerText=region.area;
-drivers.innerText=region.drivers;
-riders.innerText=region.riders;
-final.innerText=region.surge_multiplier+"x";
+area.innerText=z.area;
+drivers.innerText=z.drivers;
+riders.innerText=z.riders;
+final.innerText=z.surge_multiplier+"x";
 });
-}
 
-surgeLayers.push(layer);
+surgeGrid.push(layer);
 });
 });
-}catch(e){console.error(e);}
 }
 
 async function loadDrivers(){
-try{
 const res=await fetch(API+"/drivers");
 const data=await res.json();
-clearSet(driverMarkers);
+
+clear(driverMarkers);
 
 data.forEach(d=>{
 driverMarkers.push(
 L.circleMarker([d.lat,d.lon],{
-radius:EMBED?3:4,
+radius:4,
 color:"#3b82f6",
-fillColor:"#3b82f6",
-fillOpacity:1,
-weight:1
+fillOpacity:1
 }).addTo(map)
 );
 });
-}catch(e){console.error(e);}
 }
 
 async function loadRiders(){
-try{
 const res=await fetch(API+"/riders");
 const data=await res.json();
-clearSet(riderMarkers);
+
+clear(riderMarkers);
 
 data.forEach(r=>{
 riderMarkers.push(
 L.circleMarker([r.lat,r.lon],{
-radius:EMBED?2:3,
-color:"#ec4899",
-fillColor:"#ec4899",
-fillOpacity:.9,
-weight:1
+radius:4,
+color:"#d946ef",
+fillOpacity:1
 }).addTo(map)
 );
 });
-}catch(e){console.error(e);}
 }
 
-async function syncStatus(){
-try{
+async function sync(){
 const res=await fetch(API+"/scenario");
 const s=await res.json();
-status.innerText=`Rain: ${s.rain} | Event: ${s.event}`;
-}catch(e){}
+status.innerText=`Rain:${s.rain} | Event:${s.event}`;
 }
 
 async function setScenario(rain,event){
 const cur=await fetch(API+"/scenario");
-const state=await cur.json();
-
-const body={
-rain:rain===null?state.rain:rain,
-event:event===null?state.event:event
-};
+const old=await cur.json();
 
 await fetch(API+"/scenario",{
 method:"POST",
 headers:{"Content-Type":"application/json"},
-body:JSON.stringify(body)
+body:JSON.stringify({
+rain:rain===null?old.rain:rain,
+event:event===null?old.event:event
+})
 });
 
-status.innerText=`Rain: ${body.rain} | Event: ${body.event}`;
+sync();
 }
 
+loadGrid();
 loadSurge();
 loadDrivers();
 loadRiders();
-syncStatus();
+sync();
 
 setInterval(loadSurge,4000);
 setInterval(loadDrivers,2000);
 setInterval(loadRiders,2000);
-setInterval(syncStatus,4000);
+setInterval(sync,4000);
 </script>
+
 </body>
 </html>
