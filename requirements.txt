@@ -3,5 +3,7 @@ uvicorn
 redis
 h3
 pandas
-scikit-learn
 joblib
+scikit-learn
+python-dotenv
+matplotlib

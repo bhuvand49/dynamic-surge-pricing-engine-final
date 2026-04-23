@@ -17,10 +17,11 @@ def run_driver_simulator():
 
     while True:
         try:
-            # add 1 new driver every cycle
-            driver_id = str(uuid.uuid4())
-            lat, lon = generate_random_location()
-            drivers[driver_id] = {"lat": lat, "lon": lon}
+            # keep max 45 active drivers
+            if len(drivers) < 45:
+                driver_id = str(uuid.uuid4())
+                lat, lon = generate_random_location()
+                drivers[driver_id] = {"lat": lat, "lon": lon}
 
             for did in list(drivers.keys()):
                 lat = drivers[did]["lat"]
@@ -41,6 +42,7 @@ def run_driver_simulator():
                         "timestamp": time.time()
                     }
                 )
+
                 redis_client.expire(f"driver:{did}", 180)
 
             time.sleep(2)

@@ -16,8 +16,8 @@ def run_rider_simulator():
 
     while True:
         try:
-            # add 3 riders every cycle
-            for _ in range(3):
+            # add 1 rider per cycle (cleaner map)
+            for _ in range(1):
                 rider_id = str(uuid.uuid4())
 
                 lat, lon = generate_random_location()
@@ -32,6 +32,7 @@ def run_rider_simulator():
                         "timestamp": time.time()
                     }
                 )
+
                 redis_client.expire(f"rider:{rider_id}", 180)
 
             time.sleep(2)
