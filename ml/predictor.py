@@ -2,7 +2,6 @@ import os
 import time
 import joblib
 import pandas as pd
-from typing import Optional, Any
 
 from .scenario_state import state
 
@@ -11,15 +10,15 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_PATH = os.path.join(BASE_DIR, "ml", "surge_model.pkl")
 COLUMNS_PATH = os.path.join(BASE_DIR, "ml", "columns.pkl")
 
-model: Optional[Any] = None
+model = None
 columns = None
 
 try:
     model = joblib.load(MODEL_PATH)
     columns = joblib.load(COLUMNS_PATH)
-    print("[OK] ML model loaded successfully")
+    print("[OK] ML model loaded")
 except Exception as e:
-    print(f"[WARN] ML not loaded: {e}")
+    print("[WARN] ML model not loaded:", e)
 
 
 def rule_based_surge(supply: int, demand: int) -> float:
@@ -50,10 +49,9 @@ def predict_surge(supply: int, demand: int, zone: str) -> float:
         rain = int(state.get("rain", 0))
         event = int(state.get("event", 0))
         peak_hour = 1 if (7 <= hour <= 10 or 17 <= hour <= 21) else 0
-        delay = 5 if rain else 0
-        delay += 5 if event else 0
+        delay = (5 if rain else 0) + (5 if event else 0)
 
-        input_dict = {
+        data = {
             "drivers": supply,
             "riders": demand,
             "ratio": ratio,
@@ -66,20 +64,20 @@ def predict_surge(supply: int, demand: int, zone: str) -> float:
 
         for col in columns:
             if col.startswith("zone_"):
-                input_dict[col] = 0
+                data[col] = 0
 
         zone_col = f"zone_{zone}"
-        if zone_col in input_dict:
-            input_dict[zone_col] = 1
+        if zone_col in data:
+            data[zone_col] = 1
 
-        df = pd.DataFrame([input_dict])
+        df = pd.DataFrame([data])
         df = df.reindex(columns=columns, fill_value=0)
 
-        prediction = float(model.predict(df)[0])
-        prediction = max(1.0, min(prediction, 4.0))
+        pred = float(model.predict(df)[0])
+        pred = max(1.0, min(pred, 4.0))
 
-        return round(prediction, 2)
+        return round(pred, 2)
 
     except Exception as e:
-        print(f"[ERROR] Prediction failed: {e}")
+        print("Prediction error:", e)
         return rule_based_surge(supply, demand)

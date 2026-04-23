@@ -2,7 +2,6 @@ import time
 import uuid
 import sys
 import os
-import traceback
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
@@ -14,29 +13,27 @@ from simulator.redis_client import redis_client
 
 def run_driver_simulator():
     drivers = {}
-
-    # reduced from 300
-    for _ in range(120):
-        driver_id = str(uuid.uuid4())
-        lat, lon = generate_random_location()
-        drivers[driver_id] = {"lat": lat, "lon": lon}
-
-    print("[INFO] Driver simulator started...")
+    print("[INFO] Driver simulator started")
 
     while True:
         try:
-            for driver_id in drivers:
-                lat = drivers[driver_id]["lat"]
-                lon = drivers[driver_id]["lon"]
+            # add 1 new driver every cycle
+            driver_id = str(uuid.uuid4())
+            lat, lon = generate_random_location()
+            drivers[driver_id] = {"lat": lat, "lon": lon}
+
+            for did in list(drivers.keys()):
+                lat = drivers[did]["lat"]
+                lon = drivers[did]["lon"]
 
                 lat, lon = move_driver(lat, lon)
                 zone = get_zone(lat, lon)
 
-                drivers[driver_id]["lat"] = lat
-                drivers[driver_id]["lon"] = lon
+                drivers[did]["lat"] = lat
+                drivers[did]["lon"] = lon
 
                 redis_client.hset(
-                    f"driver:{driver_id}",
+                    f"driver:{did}",
                     mapping={
                         "lat": lat,
                         "lon": lon,
@@ -44,14 +41,12 @@ def run_driver_simulator():
                         "timestamp": time.time()
                     }
                 )
-
-                redis_client.expire(f"driver:{driver_id}", 120)
+                redis_client.expire(f"driver:{did}", 180)
 
             time.sleep(2)
 
         except Exception as e:
-            print("[ERROR]", e)
-            traceback.print_exc()
+            print("Driver simulator error:", e)
             time.sleep(2)
 
 

@@ -1,6 +1,6 @@
 import h3
 
-HEX_RESOLUTION = 7
+RESOLUTION = 8
 
 def get_zone(lat: float, lon: float) -> str:
-    return h3.latlng_to_cell(lat, lon, HEX_RESOLUTION)
+    return h3.latlng_to_cell(lat, lon, RESOLUTION)

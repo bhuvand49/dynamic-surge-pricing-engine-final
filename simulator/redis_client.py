@@ -4,6 +4,7 @@ import redis
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379").strip().strip('"').strip("'")
 
+
 try:
     redis_client = redis.Redis.from_url(
         REDIS_URL,
@@ -13,11 +14,9 @@ try:
     )
     redis_client.ping()
     print("[OK] Connected to Redis")
-    print(f"[INFO] Redis URL: {REDIS_URL}")
 
 except Exception as e:
-    print("[ERROR] Redis connection failed:", e)
-    print("[INFO] Using in-memory fallback")
+    print("[WARN] Redis failed, using memory store:", e)
 
     class InMemoryRedis:
         def __init__(self):
@@ -27,6 +26,7 @@ except Exception as e:
         def _cleanup(self):
             now = time.time()
             expired = [k for k, v in self.expiry.items() if now > v]
+
             for k in expired:
                 self.data.pop(k, None)
                 self.expiry.pop(k, None)
@@ -35,6 +35,7 @@ except Exception as e:
             self._cleanup()
             if key not in self.data:
                 self.data[key] = {}
+
             payload = dict(mapping or kwargs)
             self.data[key].update(payload)
             return 1
@@ -56,17 +57,12 @@ except Exception as e:
             self.expiry.pop(key, None)
             return 1
 
-        def keys(self, pattern="*"):
-            self._cleanup()
-            if pattern == "*":
-                return list(self.data.keys())
-
-            prefix = pattern.replace("*", "")
-            return [k for k in self.data if k.startswith(prefix)]
-
         def scan_iter(self, pattern="*"):
-            for k in self.keys(pattern):
-                yield k
+            self._cleanup()
+            prefix = pattern.replace("*", "")
+            for key in list(self.data.keys()):
+                if key.startswith(prefix):
+                    yield key
 
         def ping(self):
             return True
