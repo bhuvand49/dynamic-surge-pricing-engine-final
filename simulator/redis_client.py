@@ -2,7 +2,7 @@ import os
 import time
 import redis
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379").strip().strip('"').strip("'")
+REDIS_URL = os.getenv("REDIS_URL", "").strip()
 
 
 try:
@@ -11,12 +11,14 @@ try:
         decode_responses=True,
         socket_connect_timeout=5,
         socket_timeout=5,
+        ssl_cert_reqs=None  # important for Upstash TLS
     )
+
     redis_client.ping()
     print("[OK] Connected to Redis")
 
 except Exception as e:
-    print("[WARN] Redis failed, using memory store:", e)
+    print("[WARN] Redis failed:", e)
 
     class InMemoryRedis:
         def __init__(self):
@@ -36,8 +38,7 @@ except Exception as e:
             if key not in self.data:
                 self.data[key] = {}
 
-            payload = dict(mapping or kwargs)
-            self.data[key].update(payload)
+            self.data[key].update(dict(mapping or kwargs))
             return 1
 
         def hgetall(self, key):

@@ -1,26 +1,3 @@
-Yes bro. I’ll do it directly in chat.
-
-Because the full project is large, I’ll send it in **clean parts** so you can copy-paste file by file without missing anything.
-
-## ✅ Files I will give you next (fully fixed)
-
-1. `api.py`
-2. `utils.py`
-3. `driver_simulator.py`
-4. `rider_simulator.py`
-5. `surge_engine.py`
-6. `redis_client.py`
-7. `predictor.py`
-8. `scenario_state.py`
-9. `App.js`
-10. `App.css`
-11. `map.html`
-
-## 🚀 Starting with backend core first:
-
-### `api.py`
-
-```python
 from fastapi import FastAPI, Body
 from fastapi.middleware.cors import CORSMiddleware
 import threading
@@ -89,14 +66,14 @@ def drivers():
         if not row:
             continue
 
-        lat = float(row.get("lat", 0))
-        lon = float(row.get("lon", 0))
+        lat = float(row.get("lat", 0)) if isinstance(row, dict) else 0
+        lon = float(row.get("lon", 0)) if isinstance(row, dict) else 0
 
         if inside_city(lat, lon):
             out.append({
                 "lat": lat,
                 "lon": lon,
-                "zone": row.get("zone", "")
+                "zone": row.get("zone", "") if isinstance(row, dict) else ""
             })
 
     return out
@@ -111,14 +88,14 @@ def riders():
         if not row:
             continue
 
-        lat = float(row.get("lat", 0))
-        lon = float(row.get("lon", 0))
+        lat = float(row.get("lat", 0)) if isinstance(row, dict) else 0
+        lon = float(row.get("lon", 0)) if isinstance(row, dict) else 0
 
         if inside_city(lat, lon):
             out.append({
                 "lat": lat,
                 "lon": lon,
-                "zone": row.get("zone", "")
+                "zone": row.get("zone", "") if isinstance(row, dict) else ""
             })
 
     return out
@@ -143,17 +120,17 @@ def surge_all():
 
             poly = [[a, b] for a, b in h3.cell_to_boundary(zone)]
 
-            out.append({
-                "zone": zone,
-                "area": zone[:8],
-                "drivers": int(float(row.get("drivers", 0))),
-                "riders": int(float(row.get("riders", 0))),
-                "rule_surge": float(row.get("rule_surge", 1)),
-                "ml_surge": float(row.get("ml_surge", 1)),
-                "surge_multiplier": float(row.get("surge_multiplier", 1)),
-                "polygons": [poly]
-            })
-
+            if isinstance(row, dict):
+                out.append({
+                    "zone": zone,
+                    "area": zone[:8],
+                    "drivers": int(float(row.get("drivers", 0))),
+                    "riders": int(float(row.get("riders", 0))),
+                    "rule_surge": float(row.get("rule_surge", 1)),
+                    "ml_surge": float(row.get("ml_surge", 1)),
+                    "surge_multiplier": float(row.get("surge_multiplier", 1)),
+                    "polygons": [poly]
+                })
         except:
             pass
 
@@ -195,4 +172,3 @@ def scenario_update(payload: dict = Body(...)):
     state["rain"] = int(payload.get("rain", 0))
     state["event"] = int(payload.get("event", 0))
     return state
-```

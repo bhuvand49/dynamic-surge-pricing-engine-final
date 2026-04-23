@@ -1,6 +1,3 @@
-## ✅ `App.js`
-
-```javascript id="p7h2qm"
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ResponsiveContainer,
@@ -387,4 +384,3 @@ function KPI({ title, value, icon }) {
     </div>
   );
 }
-```

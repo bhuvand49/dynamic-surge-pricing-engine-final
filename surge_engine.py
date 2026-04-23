@@ -44,7 +44,10 @@ def calculate(drivers, riders, zone):
 
     if prev:
         try:
-            final = (0.65 * float(prev)) + (0.35 * final)
+            if isinstance(prev, str):
+                final = (0.65 * float(prev)) + (0.35 * final)
+            elif isinstance(prev, (int, float)):
+                final = (0.65 * prev) + (0.35 * final)
         except:
             pass
 
