@@ -44,87 +44,76 @@ let surgeLayers = [];
 let driverMarkers = [];
 let riderMarkers = [];
 
-function color(v){
+function zoneColor(v){
   if(v >= 3) return "#ef4444";
   if(v >= 2) return "#f97316";
   if(v >= 1.4) return "#facc15";
   return "#22c55e";
 }
 
-function clear(arr){
+function clearLayers(arr){
   arr.forEach(layer => map.removeLayer(layer));
   arr.length = 0;
 }
 
-async function loadSurge(){
+async function refreshMap(){
   try{
-    const res = await fetch(`${API}/surge/all`);
-    const data = await res.json();
+    const [surgeRes, driverRes, riderRes] = await Promise.all([
+      fetch(`${API}/surge/all`),
+      fetch(`${API}/drivers`),
+      fetch(`${API}/riders`)
+    ]);
 
-    clear(surgeLayers);
+    const surge = await surgeRes.json();
+    const drivers = await driverRes.json();
+    const riders = await riderRes.json();
 
-    data.forEach(item=>{
-      item.polygons.forEach(poly=>{
-        const layer = L.polygon(poly,{
-          color: color(item.surge_multiplier),
-          fillColor: color(item.surge_multiplier),
-          fillOpacity: 0.28,
+    clearLayers(surgeLayers);
+    clearLayers(driverMarkers);
+    clearLayers(riderMarkers);
+
+    surge.forEach(item => {
+      item.polygons.forEach(poly => {
+        const layer = L.polygon(poly, {
+          color: zoneColor(item.surge_multiplier),
+          fillColor: zoneColor(item.surge_multiplier),
+          fillOpacity: 0.30,
           weight: 1
         }).addTo(map);
 
         surgeLayers.push(layer);
       });
     });
-  }catch(e){}
-}
 
-async function loadDrivers(){
-  try{
-    const res = await fetch(`${API}/drivers`);
-    const data = await res.json();
-
-    clear(driverMarkers);
-
-    data.forEach(d=>{
-      const m = L.circleMarker([d.lat,d.lon],{
-        radius: 2.5,
-        color:"#3b82f6",
-        fillColor:"#3b82f6",
-        fillOpacity:0.8
+    drivers.forEach(d => {
+      const marker = L.circleMarker([d.lat, d.lon], {
+        radius: 3,
+        color: "#3b82f6",
+        fillColor: "#3b82f6",
+        fillOpacity: 0.85
       }).addTo(map);
 
-      driverMarkers.push(m);
+      driverMarkers.push(marker);
     });
-  }catch(e){}
-}
 
-async function loadRiders(){
-  try{
-    const res = await fetch(`${API}/riders`);
-    const data = await res.json();
-
-    clear(riderMarkers);
-
-    data.forEach(r=>{
-      const m = L.circleMarker([r.lat,r.lon],{
-        radius: 2.5,
-        color:"#a855f7",
-        fillColor:"#a855f7",
-        fillOpacity:0.8
+    riders.forEach(r => {
+      const marker = L.circleMarker([r.lat, r.lon], {
+        radius: 3,
+        color: "#a855f7",
+        fillColor: "#a855f7",
+        fillOpacity: 0.85
       }).addTo(map);
 
-      riderMarkers.push(m);
+      riderMarkers.push(marker);
     });
-  }catch(e){}
+
+  } catch(err){
+    console.log("Map load error", err);
+  }
 }
 
-loadSurge();
-loadDrivers();
-loadRiders();
-
-setInterval(loadSurge, 2500);
-setInterval(loadDrivers, 1800);
-setInterval(loadRiders, 1800);
+refreshMap();
+setInterval(refreshMap, 4000);
 </script>
 </body>
 </html>
