@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Dynamic Surge Premium Map</title>
+<title>Dynamic Surge Map</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -14,166 +14,46 @@ html, body {
   padding: 0;
   height: 100%;
   background: #020617;
-  color: white;
-  font-family: Inter, Arial, sans-serif;
 }
-
 #map {
   width: 100%;
   height: 100%;
 }
-
-.panel {
-  background: rgba(15,23,42,.84);
-  border: 1px solid rgba(255,255,255,.08);
-  padding: 14px;
-  border-radius: 16px;
-  box-shadow: 0 10px 30px rgba(0,0,0,.35);
-  backdrop-filter: blur(8px);
-}
-
-.bottom-ui {
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 14px;
-  z-index: 1000;
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 12px;
-  align-items: end;
-}
-
-h3 {
-  margin: 0 0 10px 0;
-  font-size: 20px;
-}
-
-button {
-  width: 100%;
-  padding: 12px;
-  margin-top: 8px;
-  border: none;
-  border-radius: 10px;
-  font-weight: 700;
-  cursor: pointer;
+.leaflet-control-attribution {
+  background: rgba(15,23,42,.7);
   color: white;
-  font-size: 15px;
-}
-
-.blue { background:#2563eb; }
-.orange { background:#ea580c; }
-
-#status {
-  margin-top: 10px;
-  color: #cbd5e1;
-  font-weight: 600;
-}
-
-small {
-  color: #94a3b8;
-}
-
-.legend div {
-  margin-bottom: 4px;
-}
-
-@media (max-width: 900px) {
-  .bottom-ui {
-    grid-template-columns: 1fr;
-  }
 }
 </style>
 </head>
 
 <body>
-
 <div id="map"></div>
 
-<div class="bottom-ui">
-
-  <div class="panel">
-    <h3>📍 Region Info</h3>
-    <div>Area: <span id="area">-</span></div>
-    <div>Drivers: <span id="drivers">-</span></div>
-    <div>Riders: <span id="riders">-</span></div>
-    <div>Surge: <span id="final">-</span></div>
-  </div>
-
-  <div class="panel">
-    <h3>⚙ Controls</h3>
-
-    <button id="rainBtn" class="blue" onclick="toggleRain()">🌧 Rain: OFF</button>
-    <button id="eventBtn" class="orange" onclick="toggleEvent()">🎉 Event: OFF</button>
-
-    <div id="status">Ready</div>
-  </div>
-
-  <div class="panel legend">
-    <div>🟢 Normal</div>
-    <div>🟡 Busy</div>
-    <div>🟠 High</div>
-    <div>🔴 Extreme</div>
-    <div>🔵 Drivers</div>
-    <div>🟣 Riders</div>
-    <small>Premium live refresh</small>
-  </div>
-
-</div>
-
 <script>
-const API = "https://dynamic-surge-api.onrender.com";
+const API = "https://dynamic-surge-pricing-engine-backend.onrender.com";
 
-const map = L.map("map", {
-  zoomControl: true
-}).setView([12.9716, 77.5946], 11);
+const map = L.map("map", { zoomControl: true })
+  .setView([12.9716, 77.5946], 11);
 
 L.tileLayer(
   "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   { maxZoom: 18 }
 ).addTo(map);
 
-let baseGrid = [];
-let surgeGrid = [];
+let surgeLayers = [];
 let driverMarkers = [];
 let riderMarkers = [];
 
-let rainState = 0;
-let eventState = 0;
-
 function color(v){
-  if(v >= 3) return "#ff1744";
-  if(v >= 2) return "#ff9100";
-  if(v >= 1.4) return "#ffd600";
-  return "#00e676";
+  if(v >= 3) return "#ef4444";
+  if(v >= 2) return "#f97316";
+  if(v >= 1.4) return "#facc15";
+  return "#22c55e";
 }
 
-function clearLayers(arr){
+function clear(arr){
   arr.forEach(layer => map.removeLayer(layer));
   arr.length = 0;
-}
-
-async function loadGrid(){
-  try{
-    const res = await fetch(`${API}/grid`);
-    const data = await res.json();
-
-    clearLayers(baseGrid);
-
-    data.forEach(item=>{
-      item.polygons.forEach(poly=>{
-        const layer = L.polygon(poly,{
-          color:"#1f2937",
-          weight:0.8,
-          fillOpacity:0
-        }).addTo(map);
-
-        baseGrid.push(layer);
-      });
-    });
-  }catch(e){
-    console.log("Grid error:", e);
-  }
 }
 
 async function loadSurge(){
@@ -181,31 +61,21 @@ async function loadSurge(){
     const res = await fetch(`${API}/surge/all`);
     const data = await res.json();
 
-    clearLayers(surgeGrid);
+    clear(surgeLayers);
 
     data.forEach(item=>{
       item.polygons.forEach(poly=>{
         const layer = L.polygon(poly,{
           color: color(item.surge_multiplier),
           fillColor: color(item.surge_multiplier),
-          fillOpacity: 0.32,
+          fillOpacity: 0.28,
           weight: 1
         }).addTo(map);
 
-        layer.on("click", ()=>{
-          document.getElementById("area").innerText = item.area;
-          document.getElementById("drivers").innerText = item.drivers;
-          document.getElementById("riders").innerText = item.riders;
-          document.getElementById("final").innerText = item.surge_multiplier + "x";
-        });
-
-        surgeGrid.push(layer);
+        surgeLayers.push(layer);
       });
     });
-
-  }catch(e){
-    console.log("Surge error:", e);
-  }
+  }catch(e){}
 }
 
 async function loadDrivers(){
@@ -213,22 +83,19 @@ async function loadDrivers(){
     const res = await fetch(`${API}/drivers`);
     const data = await res.json();
 
-    clearLayers(driverMarkers);
+    clear(driverMarkers);
 
     data.forEach(d=>{
-      const layer = L.circleMarker([d.lat, d.lon],{
-        radius: 2.6,
-        color: "#3b82f6",
-        fillColor: "#3b82f6",
-        fillOpacity: 0.72
+      const m = L.circleMarker([d.lat,d.lon],{
+        radius: 2.5,
+        color:"#3b82f6",
+        fillColor:"#3b82f6",
+        fillOpacity:0.8
       }).addTo(map);
 
-      driverMarkers.push(layer);
+      driverMarkers.push(m);
     });
-
-  }catch(e){
-    console.log("Drivers error:", e);
-  }
+  }catch(e){}
 }
 
 async function loadRiders(){
@@ -236,85 +103,28 @@ async function loadRiders(){
     const res = await fetch(`${API}/riders`);
     const data = await res.json();
 
-    clearLayers(riderMarkers);
+    clear(riderMarkers);
 
     data.forEach(r=>{
-      const layer = L.circleMarker([r.lat, r.lon],{
-        radius: 2.6,
-        color: "#d946ef",
-        fillColor: "#d946ef",
-        fillOpacity: 0.62
+      const m = L.circleMarker([r.lat,r.lon],{
+        radius: 2.5,
+        color:"#a855f7",
+        fillColor:"#a855f7",
+        fillOpacity:0.8
       }).addTo(map);
 
-      riderMarkers.push(layer);
+      riderMarkers.push(m);
     });
-
-  }catch(e){
-    console.log("Riders error:", e);
-  }
+  }catch(e){}
 }
 
-async function syncScenario(){
-  try{
-    const res = await fetch(`${API}/scenario`);
-    const s = await res.json();
-
-    rainState = Number(s.rain);
-    eventState = Number(s.event);
-
-    document.getElementById("rainBtn").innerText =
-      `🌧 Rain: ${rainState ? "ON" : "OFF"}`;
-
-    document.getElementById("eventBtn").innerText =
-      `🎉 Event: ${eventState ? "ON" : "OFF"}`;
-
-    document.getElementById("status").innerText =
-      `Rain: ${rainState} | Event: ${eventState}`;
-
-  }catch(e){
-    document.getElementById("status").innerText = "Offline";
-  }
-}
-
-async function updateScenario(){
-  try{
-    await fetch(`${API}/scenario`,{
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({
-        rain: rainState,
-        event: eventState
-      })
-    });
-
-    syncScenario();
-
-  }catch(e){
-    console.log("Scenario update error:", e);
-  }
-}
-
-function toggleRain(){
-  rainState = rainState ? 0 : 1;
-  updateScenario();
-}
-
-function toggleEvent(){
-  eventState = eventState ? 0 : 1;
-  updateScenario();
-}
-
-loadGrid();
 loadSurge();
 loadDrivers();
 loadRiders();
-syncScenario();
 
 setInterval(loadSurge, 2500);
 setInterval(loadDrivers, 1800);
 setInterval(loadRiders, 1800);
-setInterval(syncScenario, 3000);
 </script>
-
 </body>
 </html>
