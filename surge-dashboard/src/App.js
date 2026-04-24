@@ -378,4 +378,4 @@ function KPI({ title, value, icon }) {
       </div>
     </div>
   );
-}
+} 
