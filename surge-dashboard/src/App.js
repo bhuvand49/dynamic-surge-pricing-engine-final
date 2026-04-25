@@ -1,10 +1,4 @@
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-  useCallback
-} from "react";
-
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -16,7 +10,6 @@ import {
   BarChart,
   Bar
 } from "recharts";
-
 import {
   Users,
   Activity,
@@ -26,7 +19,6 @@ import {
   PartyPopper,
   Bell
 } from "lucide-react";
-
 import "./App.css";
 
 const API =
@@ -35,12 +27,34 @@ const API =
 
 const MAP_URL = `/map.html?embed=1&api=${encodeURIComponent(API)}`;
 
+/* ---------- Friendly Bengaluru Areas ---------- */
+const AREA_NAMES = [
+  "Indiranagar",
+  "Koramangala",
+  "Whitefield",
+  "Hebbal",
+  "Yelahanka",
+  "Electronic City",
+  "Jayanagar",
+  "MG Road",
+  "Rajajinagar",
+  "Marathahalli",
+  "HSR Layout",
+  "Banashankari"
+];
+
+/* Stable mapping from hex id -> area name */
+function mapHexToArea(hexId = "") {
+  let total = 0;
+  for (let i = 0; i < hexId.length; i++) {
+    total += hexId.charCodeAt(i);
+  }
+  return AREA_NAMES[total % AREA_NAMES.length];
+}
+
 export default function App() {
   const [regions, setRegions] = useState([]);
-  const [scenario, setScenario] = useState({
-    rain: 0,
-    event: 0
-  });
+  const [scenario, setScenario] = useState({ rain: 0, event: 0 });
   const [history, setHistory] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [now, setNow] = useState(new Date());
@@ -70,15 +84,11 @@ export default function App() {
       },
       {
         type: sc.rain ? "warning" : "success",
-        text: sc.rain
-          ? "Rain mode enabled"
-          : "Weather stable"
+        text: sc.rain ? "Rain mode enabled" : "Weather stable"
       },
       {
         type: sc.event ? "warning" : "success",
-        text: sc.event
-          ? "Event spike active"
-          : "No event hotspots"
+        text: sc.event ? "Event spike active" : "No event hotspots"
       }
     ]);
   }, []);
@@ -105,17 +115,13 @@ export default function App() {
 
       safe.forEach((r) => {
         const s = Number(r.surge_multiplier || 1);
-
         drivers += Number(r.drivers || 0);
         riders += Number(r.riders || 0);
         total += s;
-
         if (s >= 2) high++;
       });
 
-      const avg = safe.length
-        ? total / safe.length
-        : 1;
+      const avg = safe.length ? total / safe.length : 1;
 
       setStats({
         drivers,
@@ -133,7 +139,6 @@ export default function App() {
       ]);
 
       buildAlerts(safe, sc, high);
-
     } catch (e) {
       console.log("Load error:", e);
     }
@@ -143,10 +148,7 @@ export default function App() {
     loadAll();
 
     const t1 = setInterval(loadAll, 8000);
-    const t2 = setInterval(
-      () => setNow(new Date()),
-      1000
-    );
+    const t2 = setInterval(() => setNow(new Date()), 1000);
 
     return () => {
       clearInterval(t1);
@@ -171,7 +173,6 @@ export default function App() {
 
       setScenario(body);
       setTimeout(loadAll, 500);
-
     } catch (e) {
       console.log("Scenario error:", e);
     }
@@ -185,6 +186,50 @@ export default function App() {
           Number(a.surge_multiplier)
       )
       .slice(0, 6);
+  }, [regions]);
+
+  /* ---------- NEW CLEAN AREA CARDS ---------- */
+  const groupedAreas = useMemo(() => {
+    const grouped = {};
+
+    regions.forEach((r) => {
+      const areaName = mapHexToArea(r.area);
+
+      if (!grouped[areaName]) {
+        grouped[areaName] = {
+          area: areaName,
+          drivers: 0,
+          riders: 0,
+          surgeTotal: 0,
+          count: 0,
+          maxSurge: 1
+        };
+      }
+
+      const surge = Number(r.surge_multiplier || 1);
+
+      grouped[areaName].drivers += Number(r.drivers || 0);
+      grouped[areaName].riders += Number(r.riders || 0);
+      grouped[areaName].surgeTotal += surge;
+      grouped[areaName].count += 1;
+      grouped[areaName].maxSurge = Math.max(
+        grouped[areaName].maxSurge,
+        surge
+      );
+    });
+
+    return Object.values(grouped)
+      .map((g) => ({
+        ...g,
+        surge_multiplier: (
+          g.surgeTotal / g.count
+        ).toFixed(2)
+      }))
+      .sort(
+        (a, b) =>
+          Number(b.maxSurge) -
+          Number(a.maxSurge)
+      );
   }, [regions]);
 
   return (
@@ -218,21 +263,12 @@ export default function App() {
       <section className="main-grid">
         <div className="left-col">
           <div className="glass panel">
-            <div className="panel-title">
-              🗺 Live Map
-            </div>
-
-            <iframe
-              title="map"
-              src={MAP_URL}
-              className="map-frame"
-            />
+            <div className="panel-title">🗺 Live Map</div>
+            <iframe title="map" src={MAP_URL} className="map-frame" />
           </div>
 
           <div className="glass panel">
-            <div className="panel-title">
-              📈 Surge Trend
-            </div>
+            <div className="panel-title">📈 Surge Trend</div>
 
             <div className="chart-wrap">
               {history.length ? (
@@ -251,9 +287,7 @@ export default function App() {
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="empty-state">
-                  Loading...
-                </div>
+                <div className="empty-state">Loading...</div>
               )}
             </div>
           </div>
@@ -261,17 +295,11 @@ export default function App() {
 
         <div className="right-col">
           <div className="glass panel">
-            <div className="panel-title">
-              ⚙ Controls
-            </div>
+            <div className="panel-title">⚙ Controls</div>
 
             <div className="control-row">
               <button
-                className={
-                  scenario.rain
-                    ? "btn active"
-                    : "btn"
-                }
+                className={scenario.rain ? "btn active" : "btn"}
                 onClick={() =>
                   updateScenario(
                     "rain",
@@ -303,9 +331,7 @@ export default function App() {
           </div>
 
           <div className="glass panel">
-            <div className="panel-title">
-              🔔 AI Insights
-            </div>
+            <div className="panel-title">🔔 AI Insights</div>
 
             <div className="alerts-wrap">
               {alerts.map((a, i) => (
@@ -321,9 +347,7 @@ export default function App() {
           </div>
 
           <div className="glass panel">
-            <div className="panel-title">
-              🏆 Top Zones
-            </div>
+            <div className="panel-title">🏆 Top Zones</div>
 
             <div className="chart-wrap tall">
               {topRegions.length ? (
@@ -349,24 +373,23 @@ export default function App() {
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="empty-state">
-                  Loading...
-                </div>
+                <div className="empty-state">Loading...</div>
               )}
             </div>
           </div>
         </div>
       </section>
 
+      {/* -------- NEW CLEAN AREA SECTION -------- */}
       <section>
         <div className="section-head">
           📍 Area Surge Pricing
         </div>
 
         <div className="zones-grid">
-          {regions.map((r, i) => {
+          {groupedAreas.map((r, i) => {
             const high =
-              Number(r.surge_multiplier) >= 2;
+              Number(r.maxSurge) >= 2;
 
             return (
               <div
@@ -386,12 +409,8 @@ export default function App() {
                 </div>
 
                 <div className="mini">
-                  <span>
-                    Rule {r.rule_surge || 1}x
-                  </span>
-                  <span>
-                    ML {r.ml_surge || 1}x
-                  </span>
+                  <span>Peak {r.maxSurge}x</span>
+                  <span>{r.count} zones</span>
                 </div>
 
                 {high && (
