@@ -1,224 +1,449 @@
-from fastapi import FastAPI, Body
-from fastapi.middleware.cors import CORSMiddleware
-import threading
-import h3
-from matplotlib.path import Path
+```javascript id="fy1xj2"
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  BarChart,
+  Bar
+} from "recharts";
+import {
+  Users,
+  Activity,
+  Zap,
+  MapPinned,
+  CloudRain,
+  PartyPopper,
+  Bell
+} from "lucide-react";
+import "./App.css";
 
-from simulator.redis_client import redis_client
-from simulator.driver_simulator import run_driver_simulator
-from simulator.rider_simulator import run_rider_simulator
-from surge_engine import run as run_surge_engine
-from ml.scenario_state import state
+const API =
+  process.env.REACT_APP_API_URL ||
+  "https://dynamic-surge-pricing-engine-backend.onrender.com";
 
-app = FastAPI(title="Dynamic Surge Engine")
+const MAP_URL = `/map.html?embed=1&api=${encodeURIComponent(API)}`;
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+const AREA_NAMES = [
+  "Indiranagar",
+  "Koramangala",
+  "Whitefield",
+  "Hebbal",
+  "Yelahanka",
+  "Electronic City",
+  "Jayanagar",
+  "MG Road",
+  "Rajajinagar",
+  "Marathahalli",
+  "HSR Layout",
+  "Banashankari"
+];
 
-# ONE resolution everywhere
-RESOLUTION = 7
+function mapHexToArea(hexId = "") {
+  let total = 0;
+  for (let i = 0; i < hexId.length; i++) {
+    total += hexId.charCodeAt(i);
+  }
+  return AREA_NAMES[total % AREA_NAMES.length];
+}
 
-# Bengaluru boundary
-BENGALURU_BOUNDARY = [
-    (12.835, 77.460),
-    (12.870, 77.430),
-    (12.930, 77.420),
-    (13.000, 77.430),
-    (13.060, 77.455),
-    (13.105, 77.500),
-    (13.120, 77.565),
-    (13.115, 77.635),
-    (13.095, 77.705),
-    (13.050, 77.760),
-    (12.995, 77.790),
-    (12.930, 77.800),
-    (12.875, 77.785),
-    (12.835, 77.745),
-    (12.810, 77.690),
-    (12.800, 77.620),
-    (12.805, 77.550),
-    (12.820, 77.500),
-]
+export default function App() {
+  const [regions, setRegions] = useState([]);
+  const [scenario, setScenario] = useState({ rain: 0, event: 0 });
+  const [history, setHistory] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [now, setNow] = useState(new Date());
 
-city_path = Path(BENGALURU_BOUNDARY)
+  const [stats, setStats] = useState({
+    drivers: 0,
+    riders: 0,
+    high: 0,
+    avg: 1
+  });
 
+  const buildAlerts = useCallback((data, sc, high) => {
+    const top = [...data].sort(
+      (a, b) =>
+        Number(b.surge_multiplier) -
+        Number(a.surge_multiplier)
+    )[0];
 
-def inside_city(lat, lon):
-    return city_path.contains_point((lat, lon))
+    setAlerts([
+      {
+        type: "danger",
+        text: `Highest surge: ${top?.area || "N/A"} (${top?.surge_multiplier || 1}x)`
+      },
+      {
+        type: "info",
+        text: `${high} high-demand zones active`
+      },
+      {
+        type: sc.rain ? "warning" : "success",
+        text: sc.rain ? "Rain mode enabled" : "Weather stable"
+      },
+      {
+        type: sc.event ? "warning" : "success",
+        text: sc.event ? "Event spike active" : "No event hotspots"
+      }
+    ]);
+  }, []);
 
+  const loadAll = useCallback(async () => {
+    try {
+      const [res1, res2, res3, res4] = await Promise.all([
+        fetch(`${API}/surge/all`),
+        fetch(`${API}/scenario`),
+        fetch(`${API}/drivers`),
+        fetch(`${API}/riders`)
+      ]);
 
-# -----------------------------------------
-# Build full Bengaluru grid once
-# -----------------------------------------
-GRID_CELLS = set()
+      const data = await res1.json();
+      const sc = await res2.json();
+      const driverData = await res3.json();
+      const riderData = await res4.json();
 
+      const safe = Array.isArray(data) ? data : [];
 
-def build_grid():
-    global GRID_CELLS
+      setRegions(safe);
+      setScenario(sc);
 
-    lat = 12.79
-    while lat <= 13.13:
-        lon = 77.40
-        while lon <= 77.82:
-            if inside_city(lat, lon):
-                GRID_CELLS.add(
-                    h3.latlng_to_cell(lat, lon, RESOLUTION)
-                )
-            lon += 0.004
-        lat += 0.004
+      const drivers = Array.isArray(driverData)
+        ? driverData.length
+        : 0;
 
+      const riders = Array.isArray(riderData)
+        ? riderData.length
+        : 0;
 
-build_grid()
+      let high = 0;
+      let total = 0;
 
+      safe.forEach((r) => {
+        const s = Number(r.surge_multiplier || 1);
+        total += s;
+        if (s >= 2) high++;
+      });
 
-# -----------------------------------------
-# Cleanup old redis keys
-# -----------------------------------------
-def clear_old_data():
-    for pattern in ["driver:*", "rider:*", "surge:*"]:
-        for key in redis_client.scan_iter(pattern):
-            redis_client.delete(key)
+      const avg = safe.length ? total / safe.length : 1;
 
+      setStats({
+        drivers,
+        riders,
+        high,
+        avg: avg.toFixed(2)
+      });
 
-# -----------------------------------------
-# Startup
-# -----------------------------------------
-@app.on_event("startup")
-def startup():
-    clear_old_data()
+      setHistory((prev) => [
+        ...prev.slice(-11),
+        {
+          time: new Date().toLocaleTimeString(),
+          surge: +avg.toFixed(2)
+        }
+      ]);
 
-    threading.Thread(
-        target=run_driver_simulator,
-        daemon=True
-    ).start()
-
-    threading.Thread(
-        target=run_rider_simulator,
-        daemon=True
-    ).start()
-
-    threading.Thread(
-        target=run_surge_engine,
-        daemon=True
-    ).start()
-
-
-# -----------------------------------------
-# Health
-# -----------------------------------------
-@app.get("/")
-def root():
-    return {
-        "message": "Dynamic Surge API Running",
-        "status": "online"
+      buildAlerts(safe, sc, high);
+    } catch (e) {
+      console.log("Load error:", e);
     }
+  }, [buildAlerts]);
 
+  useEffect(() => {
+    loadAll();
 
-# -----------------------------------------
-# Drivers
-# -----------------------------------------
-@app.get("/drivers")
-def drivers():
-    out = []
+    const t1 = setInterval(loadAll, 8000);
+    const t2 = setInterval(() => setNow(new Date()), 1000);
 
-    for key in redis_client.scan_iter("driver:*"):
-        try:
-            row = redis_client.hgetall(key)
+    return () => {
+      clearInterval(t1);
+      clearInterval(t2);
+    };
+  }, [loadAll]);
 
-            lat = float(row["lat"])
-            lon = float(row["lon"])
+  async function updateScenario(key, value) {
+    try {
+      const body = {
+        ...scenario,
+        [key]: value
+      };
 
-            if inside_city(lat, lon):
-                out.append({
-                    "lat": lat,
-                    "lon": lon,
-                    "zone": row["zone"]
-                })
-        except:
-            continue
+      await fetch(`${API}/scenario`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      });
 
-    return out
+      setScenario(body);
+      setTimeout(loadAll, 500);
+    } catch (e) {
+      console.log("Scenario error:", e);
+    }
+  }
 
+  const topRegions = useMemo(() => {
+    return [...regions]
+      .sort(
+        (a, b) =>
+          Number(b.surge_multiplier) -
+          Number(a.surge_multiplier)
+      )
+      .slice(0, 6);
+  }, [regions]);
 
-# -----------------------------------------
-# Riders
-# -----------------------------------------
-@app.get("/riders")
-def riders():
-    out = []
+  const groupedAreas = useMemo(() => {
+    const grouped = {};
 
-    for key in redis_client.scan_iter("rider:*"):
-        try:
-            row = redis_client.hgetall(key)
+    regions.forEach((r) => {
+      const areaName = mapHexToArea(r.area);
 
-            lat = float(row["lat"])
-            lon = float(row["lon"])
+      if (!grouped[areaName]) {
+        grouped[areaName] = {
+          area: areaName,
+          drivers: 0,
+          riders: 0,
+          surgeTotal: 0,
+          count: 0,
+          maxSurge: 1
+        };
+      }
 
-            if inside_city(lat, lon):
-                out.append({
-                    "lat": lat,
-                    "lon": lon,
-                    "zone": row["zone"]
-                })
-        except:
-            continue
+      const surge = Number(r.surge_multiplier || 1);
 
-    return out
+      grouped[areaName].drivers += Number(r.drivers || 0);
+      grouped[areaName].riders += Number(r.riders || 0);
+      grouped[areaName].surgeTotal += surge;
+      grouped[areaName].count += 1;
+      grouped[areaName].maxSurge = Math.max(
+        grouped[areaName].maxSurge,
+        surge
+      );
+    });
 
+    return Object.values(grouped)
+      .map((g) => ({
+        ...g,
+        surge_multiplier: (
+          g.surgeTotal / g.count
+        ).toFixed(2)
+      }))
+      .sort(
+        (a, b) =>
+          Number(b.maxSurge) -
+          Number(a.maxSurge)
+      );
+  }, [regions]);
 
-# -----------------------------------------
-# Surge data for all cells
-# -----------------------------------------
-@app.get("/surge/all")
-def surge_all():
-    out = []
+  return (
+    <div className="app-shell">
+      <header className="topbar glass">
+        <div>
+          <div className="brand">
+            🚀 Dynamic Surge Intelligence
+          </div>
+          <div className="sub">
+            Real-time Pricing Control Center
+          </div>
+        </div>
 
-    for cell in GRID_CELLS:
-        try:
-            row = redis_client.hgetall(f"surge:{cell}") or {}
+        <div className="top-right">
+          <span className="live-dot"></span>
+          <span>ONLINE</span>
+          <span className="clock">
+            {now.toLocaleTimeString()}
+          </span>
+        </div>
+      </header>
 
-            poly = [[a, b] for a, b in h3.cell_to_boundary(cell)]
+      <section className="kpi-grid">
+        <KPI icon={<Users size={18} />} title="Drivers" value={stats.drivers} />
+        <KPI icon={<Activity size={18} />} title="Riders" value={stats.riders} />
+        <KPI icon={<Zap size={18} />} title="High Surge" value={stats.high} />
+        <KPI icon={<MapPinned size={18} />} title="Avg Surge" value={`${stats.avg}x`} />
+      </section>
 
-            out.append({
-                "zone": cell,
-                "area": cell[:8],
-                "drivers": int(float(row.get("drivers", 0))),
-                "riders": int(float(row.get("riders", 0))),
-                "rule_surge": round(float(row.get("rule_surge", 1)), 2),
-                "ml_surge": round(float(row.get("ml_surge", 1)), 2),
-                "surge_multiplier": round(float(row.get("surge_multiplier", 1)), 2),
-                "polygons": [poly]
-            })
+      <section className="main-grid">
+        <div className="left-col">
+          <div className="glass panel">
+            <div className="panel-title">🗺 Live Map</div>
+            <iframe title="map" src={MAP_URL} className="map-frame" />
+          </div>
 
-        except:
-            continue
+          <div className="glass panel">
+            <div className="panel-title">📈 Surge Trend</div>
 
-    out.sort(
-        key=lambda x: x["surge_multiplier"],
-        reverse=True
-    )
+            <div className="chart-wrap">
+              {history.length ? (
+                <ResponsiveContainer>
+                  <AreaChart data={history}>
+                    <CartesianGrid stroke="#334155" strokeDasharray="4 4" />
+                    <XAxis dataKey="time" />
+                    <YAxis domain={[1, 4]} />
+                    <Tooltip />
+                    <Area
+                      dataKey="surge"
+                      stroke="#00ffd0"
+                      fill="#00ffd033"
+                      strokeWidth={3}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="empty-state">Loading...</div>
+              )}
+            </div>
+          </div>
+        </div>
 
-    return out
+        <div className="right-col">
+          <div className="glass panel">
+            <div className="panel-title">⚙ Controls</div>
 
+            <div className="control-row">
+              <button
+                className={scenario.rain ? "btn active" : "btn"}
+                onClick={() =>
+                  updateScenario(
+                    "rain",
+                    scenario.rain ? 0 : 1
+                  )
+                }
+              >
+                <CloudRain size={16} />
+                Rain {scenario.rain ? "ON" : "OFF"}
+              </button>
 
-# -----------------------------------------
-# Scenario GET
-# -----------------------------------------
-@app.get("/scenario")
-def get_scenario():
-    return state
+              <button
+                className={
+                  scenario.event
+                    ? "btn pink active"
+                    : "btn pink"
+                }
+                onClick={() =>
+                  updateScenario(
+                    "event",
+                    scenario.event ? 0 : 1
+                  )
+                }
+              >
+                <PartyPopper size={16} />
+                Event {scenario.event ? "ON" : "OFF"}
+              </button>
+            </div>
+          </div>
 
+          <div className="glass panel">
+            <div className="panel-title">🔔 AI Insights</div>
 
-# -----------------------------------------
-# Scenario POST
-# -----------------------------------------
-@app.post("/scenario")
-def update_scenario(payload: dict = Body(...)):
-    state["rain"] = int(payload.get("rain", 0))
-    state["event"] = int(payload.get("event", 0))
-    return state
+            <div className="alerts-wrap">
+              {alerts.map((a, i) => (
+                <div
+                  key={i}
+                  className={`alert-box ${a.type}`}
+                >
+                  <Bell size={14} />
+                  {a.text}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="glass panel">
+            <div className="panel-title">🏆 Top Zones</div>
+
+            <div className="chart-wrap tall">
+              {topRegions.length ? (
+                <ResponsiveContainer>
+                  <BarChart
+                    data={topRegions}
+                    layout="vertical"
+                    margin={{ left: 30 }}
+                  >
+                    <CartesianGrid stroke="#334155" strokeDasharray="4 4" />
+                    <XAxis type="number" domain={[0, 4]} />
+                    <YAxis
+                      type="category"
+                      dataKey="area"
+                      width={100}
+                    />
+                    <Tooltip />
+                    <Bar
+                      dataKey="surge_multiplier"
+                      fill="#7c3aed"
+                      radius={[0, 8, 8, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="empty-state">Loading...</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div className="section-head">
+          📍 Area Surge Pricing
+        </div>
+
+        <div className="zones-grid">
+          {groupedAreas.map((r, i) => {
+            const high =
+              Number(r.maxSurge) >= 2;
+
+            return (
+              <div
+                key={i}
+                className={`zone-card glass ${high ? "danger" : ""}`}
+              >
+                <div className="zone-top">
+                  <span>{r.area}</span>
+                  <span className="badge">
+                    {r.surge_multiplier}x
+                  </span>
+                </div>
+
+                <div className="zone-stats">
+                  <div>Drivers: {r.drivers}</div>
+                  <div>Riders: {r.riders}</div>
+                </div>
+
+                <div className="mini">
+                  <span>Peak {r.maxSurge}x</span>
+                  <span>{r.count} zones</span>
+                </div>
+
+                {high && (
+                  <div className="alert">
+                    HIGH DEMAND 🔥
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function KPI({ title, value, icon }) {
+  return (
+    <div className="glass kpi">
+      <div className="kpi-top">
+        {icon}
+        <span>{title}</span>
+      </div>
+
+      <div className="kpi-value">
+        {value}
+      </div>
+    </div>
+  );
+}
+```
