@@ -27,7 +27,6 @@ const API =
 
 const MAP_URL = `/map.html?embed=1&api=${encodeURIComponent(API)}`;
 
-/* ---------- Friendly Bengaluru Areas ---------- */
 const AREA_NAMES = [
   "Indiranagar",
   "Koramangala",
@@ -43,7 +42,6 @@ const AREA_NAMES = [
   "Banashankari"
 ];
 
-/* Stable mapping from hex id -> area name */
 function mapHexToArea(hexId = "") {
   let total = 0;
   for (let i = 0; i < hexId.length; i++) {
@@ -68,9 +66,7 @@ export default function App() {
 
   const buildAlerts = useCallback((data, sc, high) => {
     const top = [...data].sort(
-      (a, b) =>
-        Number(b.surge_multiplier) -
-        Number(a.surge_multiplier)
+      (a, b) => Number(b.surge_multiplier) - Number(a.surge_multiplier)
     )[0];
 
     setAlerts([
@@ -95,28 +91,31 @@ export default function App() {
 
   const loadAll = useCallback(async () => {
     try {
-      const [res1, res2] = await Promise.all([
+      const [res1, res2, res3, res4] = await Promise.all([
         fetch(`${API}/surge/all`),
-        fetch(`${API}/scenario`)
+        fetch(`${API}/scenario`),
+        fetch(`${API}/drivers`),
+        fetch(`${API}/riders`)
       ]);
 
       const data = await res1.json();
       const sc = await res2.json();
+      const driverData = await res3.json();
+      const riderData = await res4.json();
 
       const safe = Array.isArray(data) ? data : [];
 
       setRegions(safe);
       setScenario(sc);
 
-      let drivers = 0;
-      let riders = 0;
+      const drivers = Array.isArray(driverData) ? driverData.length : 0;
+      const riders = Array.isArray(riderData) ? riderData.length : 0;
+
       let high = 0;
       let total = 0;
 
       safe.forEach((r) => {
         const s = Number(r.surge_multiplier || 1);
-        drivers += Number(r.drivers || 0);
-        riders += Number(r.riders || 0);
         total += s;
         if (s >= 2) high++;
       });
@@ -181,14 +180,11 @@ export default function App() {
   const topRegions = useMemo(() => {
     return [...regions]
       .sort(
-        (a, b) =>
-          Number(b.surge_multiplier) -
-          Number(a.surge_multiplier)
+        (a, b) => Number(b.surge_multiplier) - Number(a.surge_multiplier)
       )
       .slice(0, 6);
   }, [regions]);
 
-  /* ---------- NEW CLEAN AREA CARDS ---------- */
   const groupedAreas = useMemo(() => {
     const grouped = {};
 
@@ -212,44 +208,29 @@ export default function App() {
       grouped[areaName].riders += Number(r.riders || 0);
       grouped[areaName].surgeTotal += surge;
       grouped[areaName].count += 1;
-      grouped[areaName].maxSurge = Math.max(
-        grouped[areaName].maxSurge,
-        surge
-      );
+      grouped[areaName].maxSurge = Math.max(grouped[areaName].maxSurge, surge);
     });
 
     return Object.values(grouped)
       .map((g) => ({
         ...g,
-        surge_multiplier: (
-          g.surgeTotal / g.count
-        ).toFixed(2)
+        surge_multiplier: (g.surgeTotal / g.count).toFixed(2)
       }))
-      .sort(
-        (a, b) =>
-          Number(b.maxSurge) -
-          Number(a.maxSurge)
-      );
+      .sort((a, b) => Number(b.maxSurge) - Number(a.maxSurge));
   }, [regions]);
 
   return (
     <div className="app-shell">
       <header className="topbar glass">
         <div>
-          <div className="brand">
-            🚀 Dynamic Surge Intelligence
-          </div>
-          <div className="sub">
-            Real-time Pricing Control Center
-          </div>
+          <div className="brand">🚀 Dynamic Surge Intelligence</div>
+          <div className="sub">Real-time Pricing Control Center</div>
         </div>
 
         <div className="top-right">
           <span className="live-dot"></span>
           <span>ONLINE</span>
-          <span className="clock">
-            {now.toLocaleTimeString()}
-          </span>
+          <span className="clock">{now.toLocaleTimeString()}</span>
         </div>
       </header>
 
@@ -272,7 +253,7 @@ export default function App() {
 
             <div className="chart-wrap">
               {history.length ? (
-                <ResponsiveContainer>
+                <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={history}>
                     <CartesianGrid stroke="#334155" strokeDasharray="4 4" />
                     <XAxis dataKey="time" />
@@ -300,29 +281,15 @@ export default function App() {
             <div className="control-row">
               <button
                 className={scenario.rain ? "btn active" : "btn"}
-                onClick={() =>
-                  updateScenario(
-                    "rain",
-                    scenario.rain ? 0 : 1
-                  )
-                }
+                onClick={() => updateScenario("rain", scenario.rain ? 0 : 1)}
               >
                 <CloudRain size={16} />
                 Rain {scenario.rain ? "ON" : "OFF"}
               </button>
 
               <button
-                className={
-                  scenario.event
-                    ? "btn pink active"
-                    : "btn pink"
-                }
-                onClick={() =>
-                  updateScenario(
-                    "event",
-                    scenario.event ? 0 : 1
-                  )
-                }
+                className={scenario.event ? "btn pink active" : "btn pink"}
+                onClick={() => updateScenario("event", scenario.event ? 0 : 1)}
               >
                 <PartyPopper size={16} />
                 Event {scenario.event ? "ON" : "OFF"}
@@ -335,10 +302,7 @@ export default function App() {
 
             <div className="alerts-wrap">
               {alerts.map((a, i) => (
-                <div
-                  key={i}
-                  className={`alert-box ${a.type}`}
-                >
+                <div key={i} className={`alert-box ${a.type}`}>
                   <Bell size={14} />
                   {a.text}
                 </div>
@@ -351,19 +315,11 @@ export default function App() {
 
             <div className="chart-wrap tall">
               {topRegions.length ? (
-                <ResponsiveContainer>
-                  <BarChart
-                    data={topRegions}
-                    layout="vertical"
-                    margin={{ left: 30 }}
-                  >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={topRegions} layout="vertical" margin={{ left: 30 }}>
                     <CartesianGrid stroke="#334155" strokeDasharray="4 4" />
                     <XAxis type="number" domain={[0, 4]} />
-                    <YAxis
-                      type="category"
-                      dataKey="area"
-                      width={100}
-                    />
+                    <YAxis type="category" dataKey="area" width={100} />
                     <Tooltip />
                     <Bar
                       dataKey="surge_multiplier"
@@ -380,16 +336,12 @@ export default function App() {
         </div>
       </section>
 
-      {/* -------- NEW CLEAN AREA SECTION -------- */}
       <section>
-        <div className="section-head">
-          📍 Area Surge Pricing
-        </div>
+        <div className="section-head">📍 Area Surge Pricing</div>
 
         <div className="zones-grid">
           {groupedAreas.map((r, i) => {
-            const high =
-              Number(r.maxSurge) >= 2;
+            const high = Number(r.maxSurge) >= 2;
 
             return (
               <div
@@ -398,9 +350,7 @@ export default function App() {
               >
                 <div className="zone-top">
                   <span>{r.area}</span>
-                  <span className="badge">
-                    {r.surge_multiplier}x
-                  </span>
+                  <span className="badge">{r.surge_multiplier}x</span>
                 </div>
 
                 <div className="zone-stats">
@@ -413,11 +363,7 @@ export default function App() {
                   <span>{r.count} zones</span>
                 </div>
 
-                {high && (
-                  <div className="alert">
-                    HIGH DEMAND 🔥
-                  </div>
-                )}
+                {high && <div className="alert">HIGH DEMAND 🔥</div>}
               </div>
             );
           })}
@@ -434,10 +380,7 @@ function KPI({ title, value, icon }) {
         {icon}
         <span>{title}</span>
       </div>
-
-      <div className="kpi-value">
-        {value}
-      </div>
+      <div className="kpi-value">{value}</div>
     </div>
   );
 }
